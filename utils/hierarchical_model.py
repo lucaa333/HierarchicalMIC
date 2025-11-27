@@ -158,10 +158,17 @@ class HierarchicalClassificationModel(nn.Module):
         
         # Process each region's samples in batch
         # Temporarily set fine classifiers to eval mode to avoid batch norm issues with small batches
+        # Helper to get the ModuleDict of classifiers
+        classifiers_dict = None
         if isinstance(self.fine_classifier, nn.ModuleDict):
+            classifiers_dict = self.fine_classifier
+        elif hasattr(self.fine_classifier, 'classifiers') and isinstance(self.fine_classifier.classifiers, nn.ModuleDict):
+            classifiers_dict = self.fine_classifier.classifiers
+
+        original_states = {}
+        if classifiers_dict is not None:
             # Store original training states
-            original_states = {}
-            for region_name, model in self.fine_classifier.items():
+            for region_name, model in classifiers_dict.items():
                 original_states[region_name] = model.training
                 # Set batch norm layers to eval mode while keeping other layers in training mode
                 for module in model.modules():
@@ -189,12 +196,13 @@ class HierarchicalClassificationModel(nn.Module):
                         organ_logits[batch_idx, :num_organs] = local_logits[local_idx]
         
         # Restore original training states
-        if isinstance(self.fine_classifier, nn.ModuleDict):
-            for region_name, model in self.fine_classifier.items():
-                if original_states[region_name]:
-                    model.train()
-                else:
-                    model.eval()
+        if classifiers_dict is not None:
+            for region_name, model in classifiers_dict.items():
+                if region_name in original_states:
+                    if original_states[region_name]:
+                        model.train()
+                    else:
+                        model.eval()
         
         if return_dict:
             return {
