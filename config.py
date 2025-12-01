@@ -10,8 +10,8 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Data configuration
 DATA_CONFIG = {
-    'batch_size': 16,
-    'num_workers': 4,
+    'batch_size': 8,  # Reduced from 16 to fit GPU memory
+    'num_workers': 2,  # Reduced to lower memory overhead
     'download': True,
 }
 
@@ -25,9 +25,9 @@ MODEL_CONFIG = {
     # - 'resnet50_3d': ResNet-50 (3D) - Maximum performance (~46M params)
     # - 'densenet121_3d': DenseNet-121 (3D) - Best for limited data (~5.6M params)
     # - 'efficientnet3d_b0': EfficientNet-B0 (3D) - Most efficient (~1.2M params)
-    'architecture': 'resnet34_3d',  # Default: ResNet-18 (3D)
-    'coarse_architecture': 'resnet34_3d',  # Architecture for coarse (Stage 1)
-    'fine_architecture': 'resnet34_3d',    # Architecture for fine (Stage 2)
+    'architecture': 'resnet50_3d',  # Default: ResNet-18 (3D)
+    'coarse_architecture': 'resnet50_3d',  # Architecture for coarse (Stage 1)
+    'fine_architecture': 'resnet50_3d',    # Architecture for fine (Stage 2)
     'dropout_rate': 0.3,
     'use_subtypes': False,
 }
