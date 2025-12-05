@@ -106,8 +106,8 @@ ORGAN_CLASSES = {
 # Anatomical region grouping for OrganMNIST3D
 ORGAN_TO_REGION = {
     'bladder': 'abdomen',
-    'femur-left': 'bone',
-    'femur-right': 'bone',
+    'femur-left': 'chest',
+    'femur-right': 'chest',
     'heart': 'chest',
     'kidney-left': 'abdomen',
     'kidney-right': 'abdomen',
