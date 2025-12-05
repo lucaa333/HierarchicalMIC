@@ -136,18 +136,22 @@ def compute_hierarchical_metrics(
     return results
 
 
-def evaluate_model(model, data_loader, device='cuda'):
+def evaluate_model(model, data_loader, device=None):
     """
     Evaluate a model on a dataset.
     
     Args:
         model: Model to evaluate
         data_loader: DataLoader with test data
-        device: Device to use
+        device: Device to use (defaults to config.DEVICE)
     
     Returns:
         dict: Evaluation results
     """
+    from config import DEVICE
+    if device is None:
+        device = DEVICE
+    
     model.eval()
     all_preds = []
     all_labels = []

@@ -20,15 +20,16 @@ class Trainer:
         val_loader,
         criterion,
         optimizer,
-        device="cuda",
+        device=None,
         scheduler=None,
     ):
+        from config import DEVICE
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.criterion = criterion
         self.optimizer = optimizer
-        self.device = device
+        self.device = device if device is not None else DEVICE
         self.scheduler = scheduler
 
         self.history = {
@@ -139,14 +140,15 @@ class HierarchicalTrainer:
         model,
         train_loader,
         val_loader,
-        device="cuda",
+        device=None,
         coarse_weight=0.3,
         fine_weight=0.7,
     ):
+        from config import DEVICE
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
-        self.device = device
+        self.device = device if device is not None else DEVICE
         self.coarse_weight = coarse_weight
         self.fine_weight = fine_weight
 

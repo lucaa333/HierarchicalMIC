@@ -6,7 +6,31 @@ import torch
 
 
 # Device configuration
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+def get_device():
+    """
+    Detect and return the best available device (CUDA/ROCm GPU or CPU).
+    Works for both NVIDIA (CUDA) and AMD (ROCm) GPUs.
+    
+    Note: PyTorch-ROCm uses the same torch.cuda API as NVIDIA CUDA,
+    so torch.cuda.is_available() returns True for both GPU types.
+    """
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+        gpu_name = torch.cuda.get_device_name(0)
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+        print(f"GPU detected: {gpu_name}")
+        print(f"GPU memory: {gpu_memory:.2f} GB")
+        # Detect platform based on GPU name
+        if 'AMD' in gpu_name or 'Radeon' in gpu_name:
+            print("Platform: AMD ROCm")
+        else:
+            print("Platform: NVIDIA CUDA")
+        return device
+    else:
+        print("No GPU detected, using CPU")
+        return torch.device('cpu')
+
+DEVICE = get_device()
 
 # Data configuration
 DATA_CONFIG = {
@@ -25,9 +49,9 @@ MODEL_CONFIG = {
     # - 'resnet50_3d': ResNet-50 (3D) - Maximum performance (~46M params)
     # - 'densenet121_3d': DenseNet-121 (3D) - Best for limited data (~5.6M params)
     # - 'efficientnet3d_b0': EfficientNet-B0 (3D) - Most efficient (~1.2M params)
-    'architecture': 'resnet50_3d',  # Default: ResNet-18 (3D)
-    'coarse_architecture': 'resnet50_3d',  # Architecture for coarse (Stage 1)
-    'fine_architecture': 'resnet50_3d',    # Architecture for fine (Stage 2)
+    'architecture': 'resnet18_3d',  # Default: ResNet-18 (3D)
+    'coarse_architecture': 'resnet18_3d',  # Architecture for coarse (Stage 1)
+    'fine_architecture': 'resnet18_3d',    # Architecture for fine (Stage 2)
     'dropout_rate': 0.3,
     'use_subtypes': False,
 }

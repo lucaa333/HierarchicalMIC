@@ -32,7 +32,7 @@ def save_checkpoint(model, optimizer, epoch, metrics, filepath):
     print(f"Checkpoint saved to {filepath}")
 
 
-def load_checkpoint(model, optimizer, filepath, device='cuda'):
+def load_checkpoint(model, optimizer, filepath, device=None):
     """
     Load model checkpoint.
     
@@ -40,11 +40,15 @@ def load_checkpoint(model, optimizer, filepath, device='cuda'):
         model: PyTorch model
         optimizer: Optimizer
         filepath: Path to checkpoint
-        device: Device to load to
+        device: Device to load to (defaults to config.DEVICE)
     
     Returns:
         tuple: (epoch, metrics)
     """
+    from config import DEVICE
+    if device is None:
+        device = DEVICE
+    
     checkpoint = torch.load(filepath, map_location=device)
     
     model.load_state_dict(checkpoint['model_state_dict'])
