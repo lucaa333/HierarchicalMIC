@@ -26,7 +26,7 @@ DATASET_TO_REGION = {
     'organ': 'multi',  # Contains multiple regions
     'nodule': 'chest',
     'adrenal': 'abdomen',
-    'fracture': 'bone',
+    'fracture': 'chest',  # Rib fractures from chest CT
     'vessel': 'brain',
     'synapse': 'brain'
 }
