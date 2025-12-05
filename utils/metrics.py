@@ -7,12 +7,44 @@ from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,
     confusion_matrix,
-    classification_report
+    classification_report,
+    roc_auc_score
 )
 import torch
 
 
-def compute_metrics(y_true, y_pred, labels=None):
+def compute_auc(y_true, y_prob, multi_class='ovr'):
+    """
+    Compute AUC (Area Under the ROC Curve) for classification.
+    
+    Args:
+        y_true: True labels (integers)
+        y_prob: Predicted probabilities, shape (n_samples, n_classes)
+        multi_class: Strategy for multi-class AUC ('ovr' or 'ovo')
+    
+    Returns:
+        float: AUC score (or None if computation fails)
+    """
+    try:
+        y_true = np.array(y_true)
+        y_prob = np.array(y_prob)
+        
+        # For multi-class, use One-vs-Rest approach
+        n_classes = y_prob.shape[1] if len(y_prob.shape) > 1 else 2
+        
+        if n_classes == 2:
+            # Binary classification
+            probs = y_prob[:, 1] if len(y_prob.shape) > 1 else y_prob
+            return roc_auc_score(y_true, probs)
+        else:
+            # Multi-class classification
+            return roc_auc_score(y_true, y_prob, multi_class=multi_class)
+    except Exception as e:
+        print(f"Warning: Could not compute AUC: {e}")
+        return None
+
+
+def compute_metrics(y_true, y_pred, labels=None, y_prob=None):
     """
     Compute classification metrics.
     
