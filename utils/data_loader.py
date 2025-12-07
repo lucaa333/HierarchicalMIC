@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import DataLoader, Dataset
 import numpy as np
+from scipy import ndimage
 from medmnist import (
     OrganMNIST3D,
     NoduleMNIST3D,
@@ -9,6 +10,153 @@ from medmnist import (
     VesselMNIST3D,
     SynapseMNIST3D
 )
+
+# Import augmentation config
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import AUGMENTATION_CONFIG
+
+
+class Augmentation3D:
+    """
+    3D Data augmentation for volumetric medical images.
+    Applies flipping, rotation, cropping, shearing, noise, and brightness adjustments.
+    """
+    
+    def __init__(self, config=None):
+        self.config = config or AUGMENTATION_CONFIG
+        self.enabled = self.config.get('enabled', True)
+    
+    def __call__(self, volume):
+        """
+        Apply augmentation transforms to a 3D volume.
+        
+        Args:
+            volume: numpy array of shape (C, D, H, W) or (D, H, W)
+        
+        Returns:
+            Augmented volume with same shape
+        """
+        if not self.enabled:
+            return volume
+        
+        # Handle channel dimension
+        has_channel = volume.ndim == 4
+        if has_channel:
+            # Process each channel, but typically C=1 for medical images
+            result = np.stack([self._augment_volume(volume[c]) for c in range(volume.shape[0])])
+        else:
+            result = self._augment_volume(volume)
+        
+        return result
+    
+    def _augment_volume(self, vol):
+        """Apply augmentations to a single 3D volume (D, H, W)."""
+        vol = vol.copy()
+        
+        # 1. Random flipping
+        flip_prob = self.config.get('flip_prob', 0.5)
+        if np.random.random() < flip_prob:
+            # Random axis flip (0=depth, 1=height, 2=width)
+            axis = np.random.choice([0, 1, 2])
+            vol = np.flip(vol, axis=axis).copy()
+        
+        # 2. Random rotation
+        rot_range = self.config.get('rotation_range', (-15, 15))
+        angle = np.random.uniform(rot_range[0], rot_range[1])
+        # Rotate in the axial plane (height-width)
+        vol = ndimage.rotate(vol, angle, axes=(1, 2), reshape=False, order=1, mode='nearest')
+        
+        # 3. Random cropping and resizing
+        crop_scale = self.config.get('crop_scale', (0.85, 1.0))
+        crop_ratio = self.config.get('crop_ratio', (0.9, 1.1))
+        vol = self._random_resized_crop(vol, crop_scale, crop_ratio)
+        
+        # 4. Random shearing
+        shear_range = self.config.get('shear_range', (-10, 10))
+        shear_angle = np.random.uniform(shear_range[0], shear_range[1])
+        vol = self._apply_shear(vol, shear_angle)
+        
+        # 5. Gaussian noise
+        noise_std = self.config.get('gaussian_noise_std', 0.02)
+        if noise_std > 0:
+            noise = np.random.normal(0, noise_std, vol.shape)
+            vol = vol + noise
+        
+        # 6. Brightness adjustment
+        brightness_range = self.config.get('brightness_range', (0.9, 1.1))
+        brightness_factor = np.random.uniform(brightness_range[0], brightness_range[1])
+        vol = vol * brightness_factor
+        
+        # Clip values to valid range
+        vol = np.clip(vol, 0, 1)
+        
+        return vol
+    
+    def _random_resized_crop(self, vol, scale_range, ratio_range):
+        """Apply random resized crop to volume."""
+        D, H, W = vol.shape
+        
+        # Calculate crop size
+        scale = np.random.uniform(scale_range[0], scale_range[1])
+        ratio = np.random.uniform(ratio_range[0], ratio_range[1])
+        
+        new_h = int(H * scale)
+        new_w = int(W * scale * ratio)
+        new_d = int(D * scale)
+        
+        # Ensure minimum size
+        new_h = max(new_h, 4)
+        new_w = max(new_w, 4)
+        new_d = max(new_d, 4)
+        
+        # Random crop position
+        d_start = np.random.randint(0, max(1, D - new_d + 1))
+        h_start = np.random.randint(0, max(1, H - new_h + 1))
+        w_start = np.random.randint(0, max(1, W - new_w + 1))
+        
+        # Crop
+        cropped = vol[d_start:d_start+new_d, h_start:h_start+new_h, w_start:w_start+new_w]
+        
+        # Resize back to original shape using zoom
+        zoom_factors = (D / cropped.shape[0], H / cropped.shape[1], W / cropped.shape[2])
+        resized = ndimage.zoom(cropped, zoom_factors, order=1)
+        
+        # Ensure exact shape match
+        if resized.shape != (D, H, W):
+            resized = self._resize_to_shape(resized, (D, H, W))
+        
+        return resized
+    
+    def _resize_to_shape(self, vol, target_shape):
+        """Resize volume to exact target shape."""
+        zoom_factors = tuple(t / s for t, s in zip(target_shape, vol.shape))
+        return ndimage.zoom(vol, zoom_factors, order=1)
+    
+    def _apply_shear(self, vol, angle_degrees):
+        """Apply shear transformation along x-axis."""
+        # Convert to radians
+        shear = np.tan(np.radians(angle_degrees))
+        
+        # Create affine transformation matrix for shearing
+        # Shear in the H-W plane
+        D, H, W = vol.shape
+        
+        # Transformation matrix for shearing
+        matrix = np.array([
+            [1, 0, 0, 0],
+            [0, 1, shear, 0],
+            [0, 0, 1, 0]
+        ])
+        
+        # Apply affine transform
+        # Center the shear around image center
+        offset = np.array([0, -shear * W / 2, 0])
+        
+        result = ndimage.affine_transform(vol, matrix[:, :3], offset=offset, order=1, mode='nearest')
+        
+        return result
 
 
 # Dataset mapping for anatomical regions
@@ -84,11 +232,30 @@ def get_medmnist_dataloaders(
 
 
 class HierarchicalMedMNISTDataset(Dataset):
-    def __init__(self, datasets_config, split='train'):
+    """
+    Hierarchical MedMNIST 3D Dataset with optional data augmentation.
+    
+    Args:
+        datasets_config: Dict specifying which datasets to include
+        split: 'train', 'val', or 'test'
+        augment: Whether to apply data augmentation (default: True for train/val)
+        augmentation_config: Optional custom augmentation config
+    """
+    def __init__(self, datasets_config, split='train', augment=None, augmentation_config=None):
         self.split = split
         self.samples = []
         self.coarse_labels = []
         self.fine_labels = []
+        
+        # Set up augmentation (apply to train and val by default, not test)
+        if augment is None:
+            augment = split in ['train', 'val']
+        self.augment = augment
+        
+        if self.augment:
+            self.augmenter = Augmentation3D(augmentation_config)
+        else:
+            self.augmenter = None
 
         # Region to index mapping
         unique_regions = list(set(DATASET_TO_REGION.values()))
@@ -116,13 +283,19 @@ class HierarchicalMedMNISTDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        img = torch.from_numpy(self.samples[idx]).float()
-        coarse_label = torch.tensor(self.coarse_labels[idx]).long()
-        fine_label = torch.tensor(self.fine_labels[idx]).long()
-
-        # Normalize if needed
+        img = self.samples[idx].copy()
+        
+        # Normalize to [0, 1] range first (before augmentation)
         if img.max() > 1:
             img = img / 255.0
+        
+        # Apply augmentation if enabled
+        if self.augmenter is not None:
+            img = self.augmenter(img)
+        
+        img = torch.from_numpy(img).float()
+        coarse_label = torch.tensor(self.coarse_labels[idx]).long()
+        fine_label = torch.tensor(self.fine_labels[idx]).long()
 
         return img, coarse_label, fine_label
 

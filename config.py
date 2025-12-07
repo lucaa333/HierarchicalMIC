@@ -39,6 +39,24 @@ DATA_CONFIG = {
     'download': True,
 }
 
+# Data augmentation configuration
+# Applied to training and validation sets to reduce overfitting
+AUGMENTATION_CONFIG = {
+    'enabled': True,
+    # Flipping: horizontal/vertical reflections (probability)
+    'flip_prob': 0.5,
+    # Rotation: counter-clockwise rotation range in degrees
+    'rotation_range': (-20, 20),
+    # Random cropping: scale and aspect ratio ranges
+    'crop_scale': (0.85, 1.0),      # Crop 85-100% of image
+    'crop_ratio': (0.9, 1.1),       # Aspect ratio range
+    # Shearing: transformation along axes (degrees)
+    'shear_range': (-12, 12),
+    # Additional augmentations for 3D medical images
+    'gaussian_noise_std': 0.02,     # Add slight Gaussian noise
+    'brightness_range': (0.9, 1.1), # Brightness adjustment
+}
+
 # Model architecture configuration
 MODEL_CONFIG = {
     # Available architectures:
