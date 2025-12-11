@@ -10,7 +10,94 @@ from sklearn.metrics import (
     classification_report,
     roc_auc_score
 )
+from sklearn.preprocessing import label_binarize
 import torch
+
+
+def compute_auc_metrics(model, data_loader, device, num_classes, task_name="classification"):
+    """
+    Compute AUC metrics for multi-class classification.
+    Returns both macro and weighted AUC scores.
+    Handles binary classification (2 classes) correctly.
+    
+    Args:
+        model: PyTorch model to evaluate
+        data_loader: DataLoader with evaluation data
+        device: Device to run inference on
+        num_classes: Number of classes
+        task_name: Name of the task (for logging)
+    
+    Returns:
+        dict: Dictionary containing AUC metrics
+    """
+    model.eval()
+    all_labels = []
+    all_probs = []
+    
+    with torch.no_grad():
+        for imgs, labels in data_loader:
+            imgs = imgs.to(device, dtype=torch.float32)
+            if imgs.max() > 1:
+                imgs = imgs / 255.0
+            
+            labels_flat = labels.view(-1)
+            
+            outputs = model(imgs)
+            probs = torch.softmax(outputs, dim=1)
+            
+            all_labels.extend(labels_flat.cpu().numpy())
+            all_probs.extend(probs.cpu().numpy())
+    
+    all_labels = np.array(all_labels)
+    all_probs = np.array(all_probs)
+    
+    # Handle binary vs multi-class case
+    # For binary classification, label_binarize returns shape (n_samples, 1)
+    # We need to handle this specially
+    if num_classes == 2:
+        # Binary classification: use probability of positive class directly
+        try:
+            auc_macro = roc_auc_score(all_labels, all_probs[:, 1])
+            auc_weighted = auc_macro  # Same for binary
+        except ValueError as e:
+            print(f"Warning: Could not compute AUC - {e}")
+            auc_macro = 0.0
+            auc_weighted = 0.0
+        
+        # Per-class AUC (same value for both classes in binary)
+        per_class_auc = [auc_macro, auc_macro]
+    else:
+        # Multi-class: binarize labels
+        labels_binarized = label_binarize(all_labels, classes=range(num_classes))
+        
+        # Compute AUC scores
+        try:
+            auc_macro = roc_auc_score(labels_binarized, all_probs, average='macro', multi_class='ovr')
+            auc_weighted = roc_auc_score(labels_binarized, all_probs, average='weighted', multi_class='ovr')
+        except ValueError as e:
+            print(f"Warning: Could not compute AUC - {e}")
+            auc_macro = 0.0
+            auc_weighted = 0.0
+        
+        # Compute per-class AUC
+        per_class_auc = []
+        for i in range(num_classes):
+            if len(np.unique(labels_binarized[:, i])) > 1:
+                try:
+                    class_auc = roc_auc_score(labels_binarized[:, i], all_probs[:, i])
+                    per_class_auc.append(class_auc)
+                except:
+                    per_class_auc.append(0.0)
+            else:
+                per_class_auc.append(0.0)
+    
+    return {
+        'auc_macro': auc_macro,
+        'auc_weighted': auc_weighted,
+        'per_class_auc': per_class_auc,
+        'all_labels': all_labels,
+        'all_probs': all_probs
+    }
 
 
 def compute_auc(y_true, y_prob, multi_class='ovr'):
