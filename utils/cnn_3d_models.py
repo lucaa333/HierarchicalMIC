@@ -370,11 +370,22 @@ class DenseNet3D(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+        # Handle batch_size=1 during training (for hierarchical routing)
+        # Temporarily set BatchNorm to eval mode if batch size is 1
+        single_sample = (x.size(0) == 1) and self.training
+        if single_sample:
+            self.eval()
+
         features = self.features(x)
         out = self.avgpool(features)
         out = torch.flatten(out, 1)
         out = self.dropout(out)
         out = self.classifier(out)
+
+        # Restore training mode if we temporarily switched
+        if single_sample:
+            self.train()
+
         return out
 
 
@@ -541,12 +552,23 @@ class EfficientNet3D(nn.Module):
                 nn.init.zeros_(m.bias)
 
     def forward(self, x):
+        # Handle batch_size=1 during training (for hierarchical routing)
+        # Temporarily set BatchNorm to eval mode if batch size is 1
+        single_sample = (x.size(0) == 1) and self.training
+        if single_sample:
+            self.eval()
+
         x = self.features(x)
         x = self.conv_final(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.dropout(x)
         x = self.classifier(x)
+
+        # Restore training mode if we temporarily switched
+        if single_sample:
+            self.train()
+
         return x
 
 
