@@ -1,0 +1,11 @@
+Stage,Backbone,Accuracy,Precision,Recall,F1-Score
+Stage 1,ResNet-18,0.9721,0.9723,0.9721,0.9714
+Stage 1,ResNet-34,nan,nan,nan,nan
+Stage 1,ResNet-50,nan,nan,nan,nan
+Stage 1,DenseNet-121,0.9754,0.9752,0.9754,0.9753
+Stage 1,EfficientNet-B0,0.9721,0.9720,0.9721,0.9721
+Stage 2,ResNet-18,0.7836,0.7962,0.7836,0.7843
+Stage 2,ResNet-34,nan,nan,nan,nan
+Stage 2,ResNet-50,nan,nan,nan,nan
+Stage 2,DenseNet-121,0.8311,0.8365,0.8311,0.8299
+Stage 2,EfficientNet-B0,0.2049,0.0716,0.2049,0.0972
