@@ -67,9 +67,9 @@ MODEL_CONFIG = {
     # - 'resnet50_3d': ResNet-50 (3D) - Maximum performance (~46M params)
     # - 'densenet121_3d': DenseNet-121 (3D) - Best for limited data (~5.6M params)
     # - 'efficientnet3d_b0': EfficientNet-B0 (3D) - Most efficient (~1.2M params)
-    'architecture': 'enhanced',  # Default: ResNet-18 (3D)
-    'coarse_architecture': 'enhanced',  # Architecture for coarse (Stage 1)
-    'fine_architecture': 'enhanced',    # Architecture for fine (Stage 2)
+    'architecture': 'resnet18_3d',  # Default: ResNet-18 (3D)
+    'coarse_architecture': 'resnet18_3d',  # Architecture for coarse (Stage 1)
+    'fine_architecture': 'resnet18_3d',    # Architecture for fine (Stage 2)
     'dropout_rate': 0.3,
     'use_subtypes': False,
 }
@@ -143,6 +143,9 @@ DATASETS_TO_USE = {
     'full': ['organ', 'nodule', 'adrenal', 'fracture', 'vessel'],  # All available
 }
 
+# Default: All 5 3D MedMNIST datasets for hierarchical training
+DEFAULT_MERGED_DATASETS = ['organ', 'nodule', 'adrenal', 'fracture', 'vessel']
+
 # Visualization configuration
 VIZ_CONFIG = {
     'num_slices': 6,
@@ -151,12 +154,15 @@ VIZ_CONFIG = {
     'dpi': 300,
 }
 
-# Paths
+# Paths - use absolute paths based on project root
+import os as _os
+_PROJECT_ROOT = _os.path.dirname(_os.path.abspath(__file__))
+
 PATHS = {
-    'results': './results/',
-    'models': './models/',
-    'figures': './figures/',
-    'logs': './logs/',
+    'results': _os.path.join(_PROJECT_ROOT, 'results'),
+    'models': _os.path.join(_PROJECT_ROOT, 'models'),
+    'figures': _os.path.join(_PROJECT_ROOT, 'figures'),
+    'logs': _os.path.join(_PROJECT_ROOT, 'logs'),
 }
 
 # Experiment settings

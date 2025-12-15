@@ -18,6 +18,7 @@ from .coarse_classifier import CoarseAnatomicalClassifier
 from .data_loader import (
     DATASET_TO_REGION,
     REGION_DATASET_MAPPING,
+    REGION_FINE_CLASS_COUNTS,
     HierarchicalMedMNISTDataset,
     create_hierarchical_dataset,
     get_medmnist_dataloaders,
@@ -77,6 +78,7 @@ __all__ = [
     "create_hierarchical_dataset",
     "HierarchicalMedMNISTDataset",
     "REGION_DATASET_MAPPING",
+    "REGION_FINE_CLASS_COUNTS",
     "DATASET_TO_REGION",
     # Training
     "Trainer",

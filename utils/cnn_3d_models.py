@@ -2,6 +2,7 @@
 Production-ready 3D CNN architectures for medical image classification.
 
 Includes:
+- Enhanced3DCNN - Custom enhanced model with residual connections
 - 3D ResNet (18/34/50) - Best for classification
 - 3D DenseNet (121) - Excellent feature reuse
 - 3D EfficientNet - Efficient parameter usage
@@ -10,6 +11,8 @@ Includes:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from .base_model import Enhanced3DCNN
 
 # ============================================================================
 # 3D ResNet Architecture (ResNet-18, ResNet-34, ResNet-50)
@@ -587,7 +590,7 @@ def get_3d_model(model_name, num_classes=11, dropout_rate=0.3):
     Factory function to create 3D models.
 
     Args:
-        model_name: One of ['resnet18_3d', 'resnet34_3d', 'resnet50_3d',
+        model_name: One of ['enhanced', 'resnet18_3d', 'resnet34_3d', 'resnet50_3d',
                     'densenet121_3d', 'efficientnet3d_b0']
         num_classes: Number of output classes
         dropout_rate: Dropout rate
@@ -595,6 +598,14 @@ def get_3d_model(model_name, num_classes=11, dropout_rate=0.3):
     Returns:
         Model instance
     """
+    # Handle Enhanced3DCNN separately due to different parameter name
+    if model_name.lower() == 'enhanced':
+        return Enhanced3DCNN(
+            in_channels=1,
+            num_classes=num_classes,
+            dropout_rate=dropout_rate
+        )
+    
     models_dict = {
         "resnet18_3d": resnet18_3d,
         "resnet34_3d": resnet34_3d,
@@ -605,7 +616,7 @@ def get_3d_model(model_name, num_classes=11, dropout_rate=0.3):
 
     if model_name.lower() not in models_dict:
         raise ValueError(
-            f"Unknown model: {model_name}. Choose from {list(models_dict.keys())}"
+            f"Unknown model: {model_name}. Choose from ['enhanced'] + {list(models_dict.keys())}"
         )
 
     model_fn = models_dict[model_name.lower()]

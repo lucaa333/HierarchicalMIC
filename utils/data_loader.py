@@ -169,12 +169,86 @@ REGION_DATASET_MAPPING = {
     'synapse': SynapseMNIST3D   # Brain synapses (2 classes)
 }
 
-# Anatomical region mapping for hierarchical classification
+# ============================================================================
+# Fine-to-Coarse Label Mapping (per paper specification)
+# ============================================================================
+# Maps each fine-grained label to its coarse anatomical region
+
+# OrganMNIST3D: 11 organ classes -> regions
+ORGAN_FINE_TO_COARSE = {
+    0: 'abdomen',   # bladder
+    1: 'abdomen',   # femur-left (as per paper Table 1)
+    2: 'abdomen',   # femur-right
+    3: 'chest',     # heart
+    4: 'abdomen',   # kidney-left
+    5: 'abdomen',   # kidney-right
+    6: 'abdomen',   # liver
+    7: 'chest',     # lung-left
+    8: 'chest',     # lung-right
+    9: 'abdomen',   # pancreas
+    10: 'abdomen',  # spleen
+}
+
+# NoduleMNIST3D: 2 nodule classes -> chest
+NODULE_FINE_TO_COARSE = {
+    0: 'chest',     # benign
+    1: 'chest',     # malignant
+}
+
+# AdrenalMNIST3D: 2 adrenal classes -> abdomen
+ADRENAL_FINE_TO_COARSE = {
+    0: 'abdomen',   # normal
+    1: 'abdomen',   # hyperplasia
+}
+
+# FractureMNIST3D: 3 fracture classes -> chest (rib fractures)
+FRACTURE_FINE_TO_COARSE = {
+    0: 'chest',     # buckle rib
+    1: 'chest',     # nondisplaced rib fracture
+    2: 'chest',     # displaced rib fracture
+}
+
+# VesselMNIST3D: 2 vessel classes -> brain
+VESSEL_FINE_TO_COARSE = {
+    0: 'brain',     # vessel
+    1: 'brain',     # aneurysm
+}
+
+# SynapseMNIST3D: 2 synapse classes -> brain (if included)
+SYNAPSE_FINE_TO_COARSE = {
+    0: 'brain',     # synapse class 0
+    1: 'brain',     # synapse class 1
+}
+
+# Master mapping: dataset_name -> fine_label -> coarse_region
+FINE_TO_COARSE_MAPPING = {
+    'organ': ORGAN_FINE_TO_COARSE,
+    'nodule': NODULE_FINE_TO_COARSE,
+    'adrenal': ADRENAL_FINE_TO_COARSE,
+    'fracture': FRACTURE_FINE_TO_COARSE,
+    'vessel': VESSEL_FINE_TO_COARSE,
+    'synapse': SYNAPSE_FINE_TO_COARSE,
+}
+
+# ============================================================================
+# Region Fine Class Configuration (per paper Figure 2)
+# ============================================================================
+# Total fine classes per region for Stage 2 classifiers
+REGION_FINE_CLASS_COUNTS = {
+    'brain': 2,     # VesselMNIST: aneurysm, vessel
+    'chest': 8,     # Organs (heart, lung-right, lung-left) = 3
+                    # + NoduleMNIST (benign, malignant) = 2  
+                    # + FractureMNIST (buckle, nondisplaced, displaced) = 3
+    'abdomen': 10,  # Organs (liver, kidney-R/L, femur-R/L, bladder, pancreas, spleen) = 8
+                    # + AdrenalMNIST (normal, hyperplasia) = 2
+}
+
+# Simple dataset-to-default-region mapping (for backwards compatibility)
 DATASET_TO_REGION = {
-    'organ': 'multi',  # Contains multiple regions
+    'organ': 'multi',  # Contains multiple regions (use ORGAN_FINE_TO_COARSE)
     'nodule': 'chest',
     'adrenal': 'abdomen',
-    'fracture': 'chest',  # Rib fractures from chest CT
+    'fracture': 'chest',
     'vessel': 'brain',
     'synapse': 'brain'
 }
@@ -235,6 +309,9 @@ class HierarchicalMedMNISTDataset(Dataset):
     """
     Hierarchical MedMNIST 3D Dataset with optional data augmentation.
     
+    Uses fine-to-coarse label mapping to assign each sample's coarse region
+    based on its fine-grained label (e.g., 'heart' -> 'chest', 'liver' -> 'abdomen').
+    
     Args:
         datasets_config: Dict specifying which datasets to include
         split: 'train', 'val', or 'test'
@@ -257,23 +334,32 @@ class HierarchicalMedMNISTDataset(Dataset):
         else:
             self.augmenter = None
 
-        # Region to index mapping
-        unique_regions = list(set(DATASET_TO_REGION.values()))
-        self.region_to_idx = {region: idx for idx, region in enumerate(unique_regions)}
+        # Build region index mapping from unique regions across all datasets
+        # Using only 3 regions: abdomen, chest, brain (as per paper)
+        all_regions = ['abdomen', 'chest', 'brain']
+        self.region_to_idx = {region: idx for idx, region in enumerate(all_regions)}
 
-        # Load and combine datasets
-        for dataset_name, region in DATASET_TO_REGION.items():
-            if dataset_name in datasets_config:
-                dataset_class = REGION_DATASET_MAPPING[dataset_name]
-                dataset = dataset_class(split=split, download=True)
+        # Load and combine datasets with proper fine-to-coarse mapping
+        for dataset_name in datasets_config:
+            if dataset_name not in REGION_DATASET_MAPPING:
+                continue
+                
+            dataset_class = REGION_DATASET_MAPPING[dataset_name]
+            dataset = dataset_class(split=split, download=True)
+            fine_to_coarse_map = FINE_TO_COARSE_MAPPING[dataset_name]
 
-                region_idx = self.region_to_idx[region]
-
-                for i in range(len(dataset)):
-                    img, label = dataset[i]
-                    self.samples.append(img)
-                    self.coarse_labels.append(region_idx)
-                    self.fine_labels.append(label)
+            for i in range(len(dataset)):
+                img, label = dataset[i]
+                # Get fine label (handle both scalar and array labels)
+                fine_label = int(label.squeeze()) if hasattr(label, 'squeeze') else int(label)
+                
+                # Map fine label to coarse region using the mapping
+                coarse_region = fine_to_coarse_map.get(fine_label, 'abdomen')
+                coarse_idx = self.region_to_idx[coarse_region]
+                
+                self.samples.append(img)
+                self.coarse_labels.append(coarse_idx)
+                self.fine_labels.append(label)
 
         self.samples = np.array(self.samples)
         self.coarse_labels = np.array(self.coarse_labels)
@@ -295,7 +381,7 @@ class HierarchicalMedMNISTDataset(Dataset):
         
         img = torch.from_numpy(img).float()
         coarse_label = torch.tensor(self.coarse_labels[idx]).long()
-        fine_label = torch.tensor(self.fine_labels[idx]).long()
+        fine_label = torch.tensor(self.fine_labels[idx]).long().squeeze()
 
         return img, coarse_label, fine_label
 
@@ -305,8 +391,24 @@ def create_hierarchical_dataset(
     batch_size=32,
     num_workers=4
 ):
+    """
+    Create merged hierarchical dataset from multiple 3D MedMNIST datasets.
+    
+    Args:
+        datasets_to_include: List of dataset names. Default: all 5 datasets
+                            ['organ', 'nodule', 'adrenal', 'fracture', 'vessel']
+        batch_size: Batch size for DataLoaders
+        num_workers: Number of workers for data loading
+        
+    Returns:
+        train_loader: Training DataLoader (yields img, coarse_label, fine_label)
+        val_loader: Validation DataLoader
+        test_loader: Test DataLoader
+        dataset_info: Dict with metadata about the merged dataset
+    """
     if datasets_to_include is None:
-        datasets_to_include = ['nodule', 'adrenal', 'vessel']
+        # Default: Use all 5 3D MedMNIST datasets for hierarchical training
+        datasets_to_include = ['organ', 'nodule', 'adrenal', 'fracture', 'vessel']
 
     datasets_config = {name: True for name in datasets_to_include}
 
@@ -338,4 +440,19 @@ def create_hierarchical_dataset(
         pin_memory=True
     )
 
-    return train_loader, val
+    # Compute dataset info for convenience
+    num_coarse_classes = len(train_dataset.region_to_idx)
+    num_fine_classes = int(train_dataset.fine_labels.max()) + 1
+    
+    dataset_info = {
+        'num_coarse_classes': num_coarse_classes,
+        'num_fine_classes': num_fine_classes,
+        'region_to_idx': train_dataset.region_to_idx,
+        'idx_to_region': {v: k for k, v in train_dataset.region_to_idx.items()},
+        'datasets_included': datasets_to_include,
+        'train_samples': len(train_dataset),
+        'val_samples': len(val_dataset),
+        'test_samples': len(test_dataset),
+    }
+
+    return train_loader, val_loader, test_loader, dataset_info
