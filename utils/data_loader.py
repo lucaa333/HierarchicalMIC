@@ -312,6 +312,9 @@ class HierarchicalMedMNISTDataset(Dataset):
     Uses fine-to-coarse label mapping to assign each sample's coarse region
     based on its fine-grained label (e.g., 'heart' -> 'chest', 'liver' -> 'abdomen').
     
+    Fine labels are remapped to be region-local (0-indexed within each region)
+    to match the expected output size of each region's fine classifier.
+    
     Args:
         datasets_config: Dict specifying which datasets to include
         split: 'train', 'val', or 'test'
@@ -322,7 +325,8 @@ class HierarchicalMedMNISTDataset(Dataset):
         self.split = split
         self.samples = []
         self.coarse_labels = []
-        self.fine_labels = []
+        self.fine_labels = []  # Region-local fine labels (0-indexed per region)
+        self.original_fine_labels = []  # Original dataset labels (for reference)
         
         # Set up augmentation (apply to train and val by default, not test)
         if augment is None:
@@ -338,6 +342,26 @@ class HierarchicalMedMNISTDataset(Dataset):
         # Using only 3 regions: abdomen, chest, brain (as per paper)
         all_regions = ['abdomen', 'chest', 'brain']
         self.region_to_idx = {region: idx for idx, region in enumerate(all_regions)}
+        
+        # First pass: Collect all (dataset_name, original_fine_label) pairs per region
+        # to build the global-to-local fine label mapping
+        region_label_sets = {region: set() for region in all_regions}
+        
+        for dataset_name in datasets_config:
+            if dataset_name not in REGION_DATASET_MAPPING:
+                continue
+            fine_to_coarse_map = FINE_TO_COARSE_MAPPING[dataset_name]
+            for orig_label, coarse_region in fine_to_coarse_map.items():
+                # Use tuple (dataset_name, original_label) as unique identifier
+                region_label_sets[coarse_region].add((dataset_name, orig_label))
+        
+        # Build region-local fine label mapping: {region: {(dataset, orig_label): local_idx}}
+        self.region_fine_label_map = {}
+        self.region_num_classes = {}
+        for region in all_regions:
+            sorted_labels = sorted(region_label_sets[region])  # Deterministic ordering
+            self.region_fine_label_map[region] = {lbl: idx for idx, lbl in enumerate(sorted_labels)}
+            self.region_num_classes[region] = len(sorted_labels)
 
         # Load and combine datasets with proper fine-to-coarse mapping
         for dataset_name in datasets_config:
@@ -351,19 +375,24 @@ class HierarchicalMedMNISTDataset(Dataset):
             for i in range(len(dataset)):
                 img, label = dataset[i]
                 # Get fine label (handle both scalar and array labels)
-                fine_label = int(label.squeeze()) if hasattr(label, 'squeeze') else int(label)
+                orig_fine_label = int(label.squeeze()) if hasattr(label, 'squeeze') else int(label)
                 
                 # Map fine label to coarse region using the mapping
-                coarse_region = fine_to_coarse_map.get(fine_label, 'abdomen')
+                coarse_region = fine_to_coarse_map.get(orig_fine_label, 'abdomen')
                 coarse_idx = self.region_to_idx[coarse_region]
+                
+                # Get region-local fine label (0-indexed within region)
+                local_fine_label = self.region_fine_label_map[coarse_region][(dataset_name, orig_fine_label)]
                 
                 self.samples.append(img)
                 self.coarse_labels.append(coarse_idx)
-                self.fine_labels.append(label)
+                self.fine_labels.append(local_fine_label)
+                self.original_fine_labels.append(orig_fine_label)
 
         self.samples = np.array(self.samples)
         self.coarse_labels = np.array(self.coarse_labels)
         self.fine_labels = np.array(self.fine_labels)
+        self.original_fine_labels = np.array(self.original_fine_labels)
 
     def __len__(self):
         return len(self.samples)
@@ -442,6 +471,7 @@ def create_hierarchical_dataset(
 
     # Compute dataset info for convenience
     num_coarse_classes = len(train_dataset.region_to_idx)
+    # Note: This is the max local fine label across all regions, not per-region
     num_fine_classes = int(train_dataset.fine_labels.max()) + 1
     
     dataset_info = {
@@ -453,6 +483,9 @@ def create_hierarchical_dataset(
         'train_samples': len(train_dataset),
         'val_samples': len(val_dataset),
         'test_samples': len(test_dataset),
+        # Region-specific fine class counts for model initialization
+        'region_num_classes': train_dataset.region_num_classes,
+        'region_fine_label_map': train_dataset.region_fine_label_map,
     }
 
     return train_loader, val_loader, test_loader, dataset_info
