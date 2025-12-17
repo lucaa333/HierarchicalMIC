@@ -213,21 +213,30 @@ class HierarchicalTrainer:
             self.history["coarse_train_loss"].append(avg_loss)
             self.history["coarse_train_acc"].append(avg_acc)
 
-    def train_fine_stage(self, num_epochs):
+    def train_fine_stage(self, num_epochs, freeze_coarse=True):
         """
         Train region-specific fine classifiers.
         
-        Stage 1 (coarse classifier) is frozen during this phase.
+        Stage 1 (coarse classifier) is frozen during this phase by default.
+        Set freeze_coarse=False for end-to-end fine-tuning.
+        
         Samples are routed to their corresponding region classifier based on
         the coarse label, and each fine classifier is trained on its region's data.
         """
         print("\n=== Training Stage 2: Fine Pathology Classifiers ===")
         
-        # Freeze Stage 1 (coarse classifier) as per paper methodology
-        print("Freezing Stage 1 (coarse classifier)...")
-        self.model.coarse_classifier.eval()
-        for param in self.model.coarse_classifier.parameters():
-            param.requires_grad = False
+        if freeze_coarse:
+            # Freeze Stage 1 (coarse classifier) as per paper methodology
+            print("Freezing Stage 1 (coarse classifier)...")
+            self.model.coarse_classifier.eval()
+            for param in self.model.coarse_classifier.parameters():
+                param.requires_grad = False
+        else:
+            print("End-to-End Training: Stage 1 (coarse classifier) is trainable.")
+            self.model.coarse_classifier.train()
+            # Ensure parameters are trainable
+            for param in self.model.coarse_classifier.parameters():
+                param.requires_grad = True
         
         # Get region index to name mapping
         region_idx_to_name = {i: name for i, name in enumerate(self.model.region_configs.keys())}
