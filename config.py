@@ -71,8 +71,8 @@ MODEL_CONFIG = {
 
 # Training configuration
 TRAINING_CONFIG = {
-    'coarse_epochs': 2,
-    'fine_epochs': 2,
+    'coarse_epochs': 25,
+    'fine_epochs': 25,
     'learning_rate': 0.001,
     'weight_decay': 1e-4,
     'scheduler_step_size': 10,

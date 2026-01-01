@@ -104,6 +104,9 @@ class Trainer:
         """
         Train the model for multiple epochs.
         """
+        from config import EXPERIMENT_CONFIG
+        patience = EXPERIMENT_CONFIG['early_stopping_patience']
+        patience_counter = 0
         best_val_acc = 0.0
 
         for epoch in range(1, num_epochs + 1):
@@ -123,9 +126,18 @@ class Trainer:
             if self.scheduler:
                 self.scheduler.step()
 
+            # Early Stopping Check
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
+                patience_counter = 0
                 print(f"New best validation accuracy: {best_val_acc:.4f}")
+            else:
+                patience_counter += 1
+                print(f"Early Stopping Counter: {patience_counter}/{patience}")
+                
+            if patience_counter >= patience:
+                print(f"\nEarly stopping triggered! No improvement for {patience} epochs.")
+                break
 
         return self.history
 
