@@ -29,8 +29,8 @@ DEVICE = get_device()
 
 # Data configuration
 DATA_CONFIG = {
-    'batch_size': 8,  # Reduced from 16 to fit GPU memory
-    'num_workers': 2,  # Reduced to lower memory overhead
+    'batch_size': 32,  # Reduced from 16 to fit GPU memory
+    'num_workers': 8,  # Reduced to lower memory overhead
     'download': True,
 }
 
@@ -71,8 +71,8 @@ MODEL_CONFIG = {
 
 # Training configuration
 TRAINING_CONFIG = {
-    'coarse_epochs': 20,
-    'fine_epochs': 30,
+    'coarse_epochs': 2,
+    'fine_epochs': 2,
     'learning_rate': 0.001,
     'weight_decay': 1e-4,
     'scheduler_step_size': 10,
