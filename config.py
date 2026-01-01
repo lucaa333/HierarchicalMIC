@@ -62,9 +62,9 @@ MODEL_CONFIG = {
     # - 'resnet50_3d': ResNet-50 (3D) - Maximum performance (~46M params)
     # - 'densenet121_3d': DenseNet-121 (3D) - Best for limited data (~5.6M params)
     # - 'efficientnet3d_b0': EfficientNet-B0 (3D) - Most efficient (~1.2M params)
-    'architecture': 'enhanced',  # Default: ResNet-18 (3D)
-    'coarse_architecture': 'enhanced',  # Architecture for coarse (Stage 1)
-    'fine_architecture': 'enhanced',    # Architecture for fine (Stage 2)
+    'architecture': 'efficientnet3d_b0',  # Default: ResNet-18 (3D)
+    'coarse_architecture': 'efficientnet3d_b0',  # Architecture for coarse (Stage 1)
+    'fine_architecture': 'efficientnet3d_b0',    # Architecture for fine (Stage 2)
     'dropout_rate': 0.3,
     'use_subtypes': False,
 }
