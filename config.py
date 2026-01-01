@@ -20,11 +20,6 @@ def get_device():
         gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
         print(f"GPU detected: {gpu_name}")
         print(f"GPU memory: {gpu_memory:.2f} GB")
-        # Detect platform based on GPU name
-        if 'AMD' in gpu_name or 'Radeon' in gpu_name:
-            print("Platform: AMD ROCm")
-        else:
-            print("Platform: NVIDIA CUDA")
         return device
     else:
         print("No GPU detected, using CPU")
@@ -74,28 +69,6 @@ MODEL_CONFIG = {
     'use_subtypes': False,
 }
 
-# Region configurations for hierarchical model
-# Maps anatomical regions to number of pathology classes
-REGION_CONFIGS = {
-    'brain': 2,    # e.g., normal vs abnormal or vessel/synapse classes
-    'abdomen': 2,  # e.g., adrenal gland classes
-    'chest': 2,    # e.g., nodule benign/malignant
-}
-
-# Subtype configurations (optional, for 3-stage hierarchy)
-SUBTYPE_CONFIGS = {
-    'brain': {
-        'vessel': 2,
-        'synapse': 2,
-    },
-    'chest': {
-        'nodule': 2,
-    },
-    'abdomen': {
-        'adrenal': 2,
-    }
-}
-
 # Training configuration
 TRAINING_CONFIG = {
     'coarse_epochs': 20,
@@ -106,35 +79,6 @@ TRAINING_CONFIG = {
     'scheduler_gamma': 0.5,
 }
 
-# OrganMNIST3D class mapping
-ORGAN_CLASSES = {
-    0: 'bladder',
-    1: 'femur-left',
-    2: 'femur-right',
-    3: 'heart',
-    4: 'kidney-left',
-    5: 'kidney-right',
-    6: 'liver',
-    7: 'lung-left',
-    8: 'lung-right',
-    9: 'pancreas',
-    10: 'spleen',
-}
-
-# Anatomical region grouping for OrganMNIST3D
-ORGAN_TO_REGION = {
-    'bladder': 'abdomen',
-    'femur-left': 'abdomen',
-    'femur-right': 'abdomen',
-    'heart': 'chest',
-    'kidney-left': 'abdomen',
-    'kidney-right': 'abdomen',
-    'liver': 'abdomen',
-    'lung-left': 'chest',
-    'lung-right': 'chest',
-    'pancreas': 'abdomen',
-    'spleen': 'abdomen',
-}
 
 # Dataset selection for experiments
 DATASETS_TO_USE = {
@@ -145,6 +89,15 @@ DATASETS_TO_USE = {
 
 # Default: All 5 3D MedMNIST datasets for hierarchical training
 DEFAULT_MERGED_DATASETS = ['organ', 'nodule', 'adrenal', 'fracture', 'vessel']
+
+# Mapping from short dataset names to MedMNIST info keys
+DATASET_INFO_KEYS = {
+    'organ': 'organmnist3d',
+    'nodule': 'nodulemnist3d',
+    'adrenal': 'adrenalmnist3d',
+    'fracture': 'fracturemnist3d',
+    'vessel': 'vesselmnist3d',
+}
 
 # Visualization configuration
 VIZ_CONFIG = {

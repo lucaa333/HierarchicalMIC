@@ -7,14 +7,17 @@ from medmnist import (
     NoduleMNIST3D,
     AdrenalMNIST3D,
     FractureMNIST3D,
-    VesselMNIST3D
+    FractureMNIST3D,
+    VesselMNIST3D,
+    INFO
 )
 
 # Import augmentation config
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import AUGMENTATION_CONFIG
+from config import DATA_CONFIG, MODEL_CONFIG, AUGMENTATION_CONFIG, DATASET_INFO_KEYS
+from config import DEFAULT_MERGED_DATASETS
 
 
 class Augmentation3D:
@@ -55,10 +58,11 @@ class Augmentation3D:
         vol = vol.copy()
         
         # 1. Random flipping
+        # We AVOID axis 2 (width) to preserve Left/Right anatomical laterality
         flip_prob = self.config.get('flip_prob', 0.5)
         if np.random.random() < flip_prob:
-            # Random axis flip (0=depth, 1=height, 2=width)
-            axis = np.random.choice([0, 1, 2])
+            # Random axis flip (0=depth, 1=height)
+            axis = np.random.choice([0, 1])
             vol = np.flip(vol, axis=axis).copy()
         
         # 2. Random rotation
@@ -301,12 +305,16 @@ class HierarchicalMedMNISTDataset(Dataset):
         split: 'train', 'val', or 'test'
         augment: Whether to apply data augmentation (default: True for train/val)
         augmentation_config: Optional custom augmentation config
+        return_global_labels: If True, returns (img, coarse_label, fine_label, global_fine_label).
+                            If False, returns (img, coarse_label, fine_label). Default: False.
     """
-    def __init__(self, datasets_config, split='train', augment=None, augmentation_config=None):
+    def __init__(self, datasets_config, split='train', augment=None, augmentation_config=None, return_global_labels=False):
         self.split = split
+        self.return_global_labels = return_global_labels
         self.samples = []
         self.coarse_labels = []
         self.fine_labels = []  # Region-local fine labels (0-indexed per region)
+        self.global_fine_labels = []  # Global fine labels (0-indexed across all regions, for flat classification)
         self.original_fine_labels = []  # Original dataset labels (for reference)
         
         # Set up augmentation (apply to train and val by default, not test)
@@ -343,6 +351,14 @@ class HierarchicalMedMNISTDataset(Dataset):
             sorted_labels = sorted(region_label_sets[region])  # Deterministic ordering
             self.region_fine_label_map[region] = {lbl: idx for idx, lbl in enumerate(sorted_labels)}
             self.region_num_classes[region] = len(sorted_labels)
+        
+        # Build region offsets for global fine label computation
+        # Global label = region_offset + local_fine_label
+        self.region_offsets = {}
+        offset = 0
+        for region in all_regions:
+            self.region_offsets[region] = offset
+            offset += self.region_num_classes[region]
 
         # Load and combine datasets with proper fine-to-coarse mapping
         for dataset_name in datasets_config:
@@ -365,14 +381,19 @@ class HierarchicalMedMNISTDataset(Dataset):
                 # Get region-local fine label (0-indexed within region)
                 local_fine_label = self.region_fine_label_map[coarse_region][(dataset_name, orig_fine_label)]
                 
+                # Compute global fine label (0-indexed across all regions)
+                global_fine_label = self.region_offsets[coarse_region] + local_fine_label
+                
                 self.samples.append(img)
                 self.coarse_labels.append(coarse_idx)
                 self.fine_labels.append(local_fine_label)
+                self.global_fine_labels.append(global_fine_label)
                 self.original_fine_labels.append(orig_fine_label)
 
         self.samples = np.array(self.samples)
         self.coarse_labels = np.array(self.coarse_labels)
         self.fine_labels = np.array(self.fine_labels)
+        self.global_fine_labels = np.array(self.global_fine_labels)
         self.original_fine_labels = np.array(self.original_fine_labels)
 
     def __len__(self):
@@ -392,14 +413,19 @@ class HierarchicalMedMNISTDataset(Dataset):
         img = torch.from_numpy(img).float()
         coarse_label = torch.tensor(self.coarse_labels[idx]).long()
         fine_label = torch.tensor(self.fine_labels[idx]).long().squeeze()
-
+        
+        if self.return_global_labels:
+            global_fine_label = torch.tensor(self.global_fine_labels[idx]).long().squeeze()
+            return img, coarse_label, fine_label, global_fine_label
+            
         return img, coarse_label, fine_label
 
 
-def create_hierarchical_dataset(
+def     create_hierarchical_dataset(
     datasets_to_include=None,
     batch_size=32,
-    num_workers=4
+    num_workers=4,
+    return_global_labels=False
 ):
     """
     Create merged hierarchical dataset from multiple 3D MedMNIST datasets.
@@ -409,9 +435,10 @@ def create_hierarchical_dataset(
                             ['organ', 'nodule', 'adrenal', 'fracture', 'vessel']
         batch_size: Batch size for DataLoaders
         num_workers: Number of workers for data loading
+        return_global_labels: Whether to include global fine labels in returned batches.
         
     Returns:
-        train_loader: Training DataLoader (yields img, coarse_label, fine_label)
+        train_loader: Training DataLoader
         val_loader: Validation DataLoader
         test_loader: Test DataLoader
         dataset_info: Dict with metadata about the merged dataset
@@ -422,9 +449,9 @@ def create_hierarchical_dataset(
 
     datasets_config = {name: True for name in datasets_to_include}
 
-    train_dataset = HierarchicalMedMNISTDataset(datasets_config, split='train')
-    val_dataset = HierarchicalMedMNISTDataset(datasets_config, split='val')
-    test_dataset = HierarchicalMedMNISTDataset(datasets_config, split='test')
+    train_dataset = HierarchicalMedMNISTDataset(datasets_config, split='train', return_global_labels=return_global_labels)
+    val_dataset = HierarchicalMedMNISTDataset(datasets_config, split='val', return_global_labels=return_global_labels)
+    test_dataset = HierarchicalMedMNISTDataset(datasets_config, split='test', return_global_labels=return_global_labels)
 
     train_loader = DataLoader(
         train_dataset,
@@ -467,6 +494,37 @@ def create_hierarchical_dataset(
         # Region-specific fine class counts for model initialization
         'region_num_classes': train_dataset.region_num_classes,
         'region_fine_label_map': train_dataset.region_fine_label_map,
+        'global_idx_to_name': _get_global_label_mapping(train_dataset)
     }
 
     return train_loader, val_loader, test_loader, dataset_info
+
+
+def _get_global_label_mapping(dataset):
+    """Helper to build global index -> label name mapping."""
+    
+    mapping = {}
+    
+    # Iterate through regions in the same order as dataset initialization
+    for region, offset in dataset.region_offsets.items():
+        fine_map = dataset.region_fine_label_map[region]
+        
+        # Iterate over local items
+        for (dataset_name, orig_idx), local_idx in fine_map.items():
+            global_idx = offset + local_idx
+            
+            # Retrieve name
+            info_key = DATASET_INFO_KEYS.get(dataset_name)
+            if info_key and str(orig_idx) in INFO[info_key]['label']:
+                label_name = INFO[info_key]['label'][str(orig_idx)]
+            else:
+                label_name = f"{dataset_name}_{orig_idx}" # Fallback
+                
+            mapping[global_idx] = {
+                "name": label_name,
+                "region": region,
+                "dataset": dataset_name,
+                "original_label": orig_idx
+            }
+            
+    return mapping
