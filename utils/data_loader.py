@@ -7,8 +7,7 @@ from medmnist import (
     NoduleMNIST3D,
     AdrenalMNIST3D,
     FractureMNIST3D,
-    VesselMNIST3D,
-    SynapseMNIST3D
+    VesselMNIST3D
 )
 
 # Import augmentation config
@@ -165,8 +164,7 @@ REGION_DATASET_MAPPING = {
     'nodule': NoduleMNIST3D,    # Chest (2 classes: benign/malignant)
     'adrenal': AdrenalMNIST3D,  # Abdomen (2 classes)
     'fracture': FractureMNIST3D, # Bone (3 classes)
-    'vessel': VesselMNIST3D,    # Brain vessels (2 classes)
-    'synapse': SynapseMNIST3D   # Brain synapses (2 classes)
+    'vessel': VesselMNIST3D     # Brain vessels (2 classes)
 }
 
 # ============================================================================
@@ -176,17 +174,17 @@ REGION_DATASET_MAPPING = {
 
 # OrganMNIST3D: 11 organ classes -> regions
 ORGAN_FINE_TO_COARSE = {
-    0: 'abdomen',   # bladder
-    1: 'abdomen',   # femur-left (as per paper Table 1)
-    2: 'abdomen',   # femur-right
-    3: 'chest',     # heart
-    4: 'abdomen',   # kidney-left
-    5: 'abdomen',   # kidney-right
-    6: 'abdomen',   # liver
-    7: 'chest',     # lung-left
-    8: 'chest',     # lung-right
-    9: 'abdomen',   # pancreas
-    10: 'abdomen',  # spleen
+    0: 'abdomen',   # liver
+    1: 'abdomen',   # kidney-right
+    2: 'abdomen',   # kidney-left
+    3: 'abdomen',   # femur-right
+    4: 'abdomen',   # femur-left
+    5: 'abdomen',   # bladder
+    6: 'chest',     # heart
+    7: 'chest',     # lung-right
+    8: 'chest',     # lung-left
+    9: 'abdomen',   # spleen
+    10: 'abdomen',  # pancreas
 }
 
 # NoduleMNIST3D: 2 nodule classes -> chest
@@ -203,7 +201,7 @@ ADRENAL_FINE_TO_COARSE = {
 
 # FractureMNIST3D: 3 fracture classes -> chest (rib fractures)
 FRACTURE_FINE_TO_COARSE = {
-    0: 'chest',     # buckle rib
+    0: 'chest',     # buckle rib fracture
     1: 'chest',     # nondisplaced rib fracture
     2: 'chest',     # displaced rib fracture
 }
@@ -214,20 +212,13 @@ VESSEL_FINE_TO_COARSE = {
     1: 'brain',     # aneurysm
 }
 
-# SynapseMNIST3D: 2 synapse classes -> brain (if included)
-SYNAPSE_FINE_TO_COARSE = {
-    0: 'brain',     # synapse class 0
-    1: 'brain',     # synapse class 1
-}
-
 # Master mapping: dataset_name -> fine_label -> coarse_region
 FINE_TO_COARSE_MAPPING = {
     'organ': ORGAN_FINE_TO_COARSE,
     'nodule': NODULE_FINE_TO_COARSE,
     'adrenal': ADRENAL_FINE_TO_COARSE,
     'fracture': FRACTURE_FINE_TO_COARSE,
-    'vessel': VESSEL_FINE_TO_COARSE,
-    'synapse': SYNAPSE_FINE_TO_COARSE,
+    'vessel': VESSEL_FINE_TO_COARSE
 }
 
 # ============================================================================
@@ -241,16 +232,6 @@ REGION_FINE_CLASS_COUNTS = {
                     # + FractureMNIST (buckle, nondisplaced, displaced) = 3
     'abdomen': 10,  # Organs (liver, kidney-R/L, femur-R/L, bladder, pancreas, spleen) = 8
                     # + AdrenalMNIST (normal, hyperplasia) = 2
-}
-
-# Simple dataset-to-default-region mapping (for backwards compatibility)
-DATASET_TO_REGION = {
-    'organ': 'multi',  # Contains multiple regions (use ORGAN_FINE_TO_COARSE)
-    'nodule': 'chest',
-    'adrenal': 'abdomen',
-    'fracture': 'chest',
-    'vessel': 'brain',
-    'synapse': 'brain'
 }
 
 
@@ -471,8 +452,8 @@ def create_hierarchical_dataset(
 
     # Compute dataset info for convenience
     num_coarse_classes = len(train_dataset.region_to_idx)
-    # Note: This is the max local fine label across all regions, not per-region
-    num_fine_classes = int(train_dataset.fine_labels.max()) + 1
+    # Total fine classes = sum of all region-specific fine classes
+    num_fine_classes = sum(train_dataset.region_num_classes.values())
     
     dataset_info = {
         'num_coarse_classes': num_coarse_classes,
