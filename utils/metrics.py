@@ -304,7 +304,7 @@ def save_metrics_json(metrics_dict, filepath, indent=2):
     with open(filepath, 'w') as f:
         json.dump(metrics_dict, f, indent=indent)
     
-    print(f"✓ Metrics saved to: {filepath}")
+    print(f"Metrics saved to: {filepath}")
 
 
 def compute_comprehensive_metrics(y_true, y_pred, y_prob=None, class_names=None):
