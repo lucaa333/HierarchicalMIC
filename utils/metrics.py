@@ -278,3 +278,101 @@ def hierarchical_consistency_score(coarse_pred, fine_pred, hierarchy_map):
     expected_coarse = np.array([hierarchy_map.get(f, -1) for f in fine_pred])
     consistent = (coarse_pred == expected_coarse).sum()
     return consistent / len(coarse_pred)
+
+
+def save_metrics_json(metrics_dict, filepath, indent=2):
+    """
+    Save metrics to JSON file with timestamp.
+    
+    Args:
+        metrics_dict: Dictionary containing metrics
+        filepath: Path to save JSON file
+        indent: JSON indentation (default: 2)
+    """
+    import json
+    import os
+    from datetime import datetime
+    
+    # Add timestamp if not present
+    if 'timestamp' not in metrics_dict:
+        metrics_dict['timestamp'] = datetime.now().isoformat()
+    
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    # Save
+    with open(filepath, 'w') as f:
+        json.dump(metrics_dict, f, indent=indent)
+    
+    print(f"✓ Metrics saved to: {filepath}")
+
+
+def compute_comprehensive_metrics(y_true, y_pred, y_prob=None, class_names=None):
+    """
+    Compute all standard metrics in the schema format.
+    
+    Args:
+        y_true: True labels (array-like)
+        y_pred: Predicted labels (array-like)
+        y_prob: Predicted probabilities (optional, for AUC) - shape (n_samples, n_classes)
+        class_names: List of class names (optional)
+    
+    Returns:
+        dict: Metrics in standard schema format
+    """
+    from sklearn.preprocessing import label_binarize
+    
+    # Convert to numpy arrays
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    
+    # Overall metrics
+    accuracy = accuracy_score(y_true, y_pred)
+    prec, rec, f1, support = precision_recall_fscore_support(
+        y_true, y_pred, average='weighted', zero_division=0
+    )
+    
+    # Per-class metrics
+    prec_per_class, rec_per_class, f1_per_class, support_per_class = \
+        precision_recall_fscore_support(y_true, y_pred, average=None, zero_division=0)
+    
+    # AUC (if probabilities provided)
+    auc = None
+    if y_prob is not None:
+        try:
+            y_prob = np.array(y_prob)
+            num_classes = y_prob.shape[1] if len(y_prob.shape) > 1 else 2
+            
+            if num_classes == 2:
+                # Binary classification
+                auc = roc_auc_score(y_true, y_prob[:, 1])
+            else:
+                # Multi-class classification
+                y_true_bin = label_binarize(y_true, classes=range(num_classes))
+                auc = roc_auc_score(y_true_bin, y_prob, average='weighted', multi_class='ovr')
+        except Exception as e:
+            print(f"Warning: Could not compute AUC - {e}")
+            auc = None
+    
+    # Build metrics dict
+    metrics = {
+        "accuracy": float(accuracy),
+        "precision_weighted": float(prec),
+        "recall_weighted": float(rec),
+        "f1_weighted": float(f1),
+    }
+    
+    if auc is not None:
+        metrics["auc_weighted"] = float(auc)
+    
+    metrics["per_class"] = {
+        "precision": [float(x) for x in prec_per_class],
+        "recall": [float(x) for x in rec_per_class],
+        "f1": [float(x) for x in f1_per_class],
+        "support": [int(x) for x in support_per_class]
+    }
+    
+    if class_names is not None:
+        metrics["class_names"] = class_names
+    
+    return metrics
