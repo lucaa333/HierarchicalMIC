@@ -7,7 +7,6 @@ from medmnist import (
     NoduleMNIST3D,
     AdrenalMNIST3D,
     FractureMNIST3D,
-    FractureMNIST3D,
     VesselMNIST3D,
     INFO
 )
@@ -22,8 +21,9 @@ from config import DEFAULT_MERGED_DATASETS
 
 class Augmentation3D:
     """
-    3D Data augmentation for volumetric medical images.
-    Applies flipping, rotation, cropping, shearing, noise, and brightness adjustments.
+    3D data augmentation for volumetric medical images.
+    Applies probabilistic flipping, rotation, scaling, translation, optional crop/shear,
+    and intensity jitter (noise, brightness, contrast, gamma).
     """
     
     def __init__(self, config=None):
@@ -56,47 +56,129 @@ class Augmentation3D:
     def _augment_volume(self, vol):
         """Apply augmentations to a single 3D volume (D, H, W)."""
         vol = vol.copy()
-        
-        # 1. Random flipping
-        # We AVOID axis 2 (width) to preserve Left/Right anatomical laterality
-        flip_prob = self.config.get('flip_prob', 0.5)
-        if np.random.random() < flip_prob:
-            # Random axis flip (0=depth, 1=height)
-            axis = np.random.choice([0, 1])
-            vol = np.flip(vol, axis=axis).copy()
-        
-        # 2. Random rotation
-        rot_range = self.config.get('rotation_range', (-15, 15))
-        angle = np.random.uniform(rot_range[0], rot_range[1])
-        # Rotate in the axial plane (height-width)
-        vol = ndimage.rotate(vol, angle, axes=(1, 2), reshape=False, order=1, mode='nearest')
-        
-        # 3. Random cropping and resizing
-        crop_scale = self.config.get('crop_scale', (0.85, 1.0))
-        crop_ratio = self.config.get('crop_ratio', (0.9, 1.1))
-        vol = self._random_resized_crop(vol, crop_scale, crop_ratio)
-        
-        # 4. Random shearing
-        shear_range = self.config.get('shear_range', (-10, 10))
-        shear_angle = np.random.uniform(shear_range[0], shear_range[1])
-        vol = self._apply_shear(vol, shear_angle)
-        
-        # 5. Gaussian noise
-        noise_std = self.config.get('gaussian_noise_std', 0.02)
-        if noise_std > 0:
+        cfg = self.config
+
+        # 1. Random flipping (avoid width axis by default)
+        flip_prob = cfg.get('flip_prob', 0.0)
+        flip_axes = cfg.get('flip_axes', (0, 1))
+        if flip_prob > 0 and flip_axes:
+            if np.random.random() < flip_prob:
+                axis = np.random.choice(flip_axes)
+                vol = np.flip(vol, axis=axis).copy()
+
+        # 2. Random rotation in axial plane
+        rot_prob = cfg.get('rotation_prob', 0.0)
+        if np.random.random() < rot_prob:
+            rot_range = cfg.get('rotation_range', (-10, 10))
+            angle = np.random.uniform(rot_range[0], rot_range[1])
+            axes = tuple(cfg.get('rotation_axes', (1, 2)))
+            vol = ndimage.rotate(vol, angle, axes=axes, reshape=False, order=1, mode='nearest')
+
+        # 3. Random scaling (zoom)
+        scale_prob = cfg.get('scale_prob', 0.0)
+        if np.random.random() < scale_prob:
+            scale_range = cfg.get('scale_range', (0.95, 1.05))
+            scale = np.random.uniform(scale_range[0], scale_range[1])
+            scale_axes = tuple(cfg.get('scale_axes', (0, 1, 2)))
+            vol = self._random_zoom(vol, scale, scale_axes=scale_axes)
+
+        # 4. Random crop (optional)
+        crop_prob = cfg.get('crop_prob', 0.0)
+        if np.random.random() < crop_prob:
+            crop_scale = cfg.get('crop_scale', (0.9, 1.0))
+            crop_ratio = cfg.get('crop_ratio', (0.95, 1.05))
+            vol = self._random_resized_crop(vol, crop_scale, crop_ratio)
+
+        # 5. Random shear (optional)
+        shear_prob = cfg.get('shear_prob', 0.0)
+        if np.random.random() < shear_prob:
+            shear_range = cfg.get('shear_range', (-5, 5))
+            shear_angle = np.random.uniform(shear_range[0], shear_range[1])
+            vol = self._apply_shear(vol, shear_angle)
+
+        # 6. Random translation
+        translation_prob = cfg.get('translation_prob', 0.0)
+        if np.random.random() < translation_prob:
+            translation_range = cfg.get('translation_range', (-2, 2))
+            translation_axes = tuple(cfg.get('translation_axes', (1, 2)))
+            shift = self._sample_shift(translation_range, translation_axes, vol.ndim)
+            vol = ndimage.shift(vol, shift=shift, order=1, mode='nearest')
+
+        # 7. Intensity jitter
+        noise_prob = cfg.get('gaussian_noise_prob', 0.0)
+        noise_std = cfg.get('gaussian_noise_std', 0.0)
+        if noise_std > 0 and np.random.random() < noise_prob:
             noise = np.random.normal(0, noise_std, vol.shape)
             vol = vol + noise
-        
-        # 6. Brightness adjustment
-        brightness_range = self.config.get('brightness_range', (0.9, 1.1))
-        brightness_factor = np.random.uniform(brightness_range[0], brightness_range[1])
-        vol = vol * brightness_factor
-        
-        # Clip values to valid range
-        vol = np.clip(vol, 0, 1)
-        
+
+        brightness_prob = cfg.get('brightness_prob', 0.0)
+        if np.random.random() < brightness_prob:
+            brightness_range = cfg.get('brightness_range', (0.95, 1.05))
+            brightness_factor = np.random.uniform(brightness_range[0], brightness_range[1])
+            vol = vol * brightness_factor
+
+        contrast_prob = cfg.get('contrast_prob', 0.0)
+        if np.random.random() < contrast_prob:
+            contrast_range = cfg.get('contrast_range', (0.95, 1.05))
+            contrast_factor = np.random.uniform(contrast_range[0], contrast_range[1])
+            mean = vol.mean()
+            vol = (vol - mean) * contrast_factor + mean
+
+        gamma_prob = cfg.get('gamma_prob', 0.0)
+        if np.random.random() < gamma_prob:
+            gamma_range = cfg.get('gamma_range', (0.9, 1.1))
+            gamma = np.random.uniform(gamma_range[0], gamma_range[1])
+            vol = np.power(np.clip(vol, 0, None), gamma)
+
+        clip_min = cfg.get('clip_min', 0.0)
+        clip_max = cfg.get('clip_max', 1.0)
+        vol = np.clip(vol, clip_min, clip_max)
+
         return vol
-    
+
+    def _random_zoom(self, vol, scale, scale_axes=(0, 1, 2)):
+        """Zoom volume and center-crop/pad back to original shape."""
+        D, H, W = vol.shape
+        zoom_factors = [1.0, 1.0, 1.0]
+        for axis in scale_axes:
+            zoom_factors[axis] = scale
+        zoomed = ndimage.zoom(vol, zoom_factors, order=1)
+        return self._center_crop_or_pad(zoomed, (D, H, W))
+
+    def _center_crop_or_pad(self, vol, target_shape):
+        """Center crop or pad volume to target shape."""
+        slices = []
+        pads = []
+        for axis, target in enumerate(target_shape):
+            size = vol.shape[axis]
+            if size > target:
+                start = (size - target) // 2
+                end = start + target
+                slices.append(slice(start, end))
+                pads.append((0, 0))
+            else:
+                slices.append(slice(0, size))
+                pad_total = target - size
+                pad_before = pad_total // 2
+                pad_after = pad_total - pad_before
+                pads.append((pad_before, pad_after))
+        cropped = vol[tuple(slices)]
+        if any(pad != (0, 0) for pad in pads):
+            return np.pad(cropped, pads, mode='edge')
+        return cropped
+
+    def _sample_shift(self, shift_range, axes, ndim):
+        """Sample per-axis shifts for selected axes."""
+        shift = np.zeros(ndim, dtype=float)
+        if not axes:
+            return shift
+        if not (isinstance(shift_range, (list, tuple)) and len(shift_range) == 2):
+            raise ValueError('translation_range must be a (min, max) tuple')
+        low, high = shift_range
+        for axis in axes:
+            shift[axis] = np.random.uniform(low, high)
+        return shift
+
     def _random_resized_crop(self, vol, scale_range, ratio_range):
         """Apply random resized crop to volume."""
         D, H, W = vol.shape
@@ -303,7 +385,7 @@ class HierarchicalMedMNISTDataset(Dataset):
     Args:
         datasets_config: Dict specifying which datasets to include
         split: 'train', 'val', or 'test'
-        augment: Whether to apply data augmentation (default: True for train/val)
+        augment: Whether to apply data augmentation (default: True for train only)
         augmentation_config: Optional custom augmentation config
         return_global_labels: If True, returns (img, coarse_label, fine_label, global_fine_label).
                             If False, returns (img, coarse_label, fine_label). Default: False.
@@ -317,7 +399,7 @@ class HierarchicalMedMNISTDataset(Dataset):
         self.global_fine_labels = []  # Global fine labels (0-indexed across all regions, for flat classification)
         self.original_fine_labels = []  # Original dataset labels (for reference)
         
-        # Set up augmentation (apply to train and val by default, not test)
+        # Set up augmentation (apply to train split only, not val/test)
         if augment is None:
             augment = (split == 'train')
         self.augment = augment
@@ -375,7 +457,12 @@ class HierarchicalMedMNISTDataset(Dataset):
                 orig_fine_label = int(label.squeeze()) if hasattr(label, 'squeeze') else int(label)
                 
                 # Map fine label to coarse region using the mapping
-                coarse_region = fine_to_coarse_map.get(orig_fine_label, 'abdomen')
+                if orig_fine_label not in fine_to_coarse_map:
+                    raise ValueError(
+                        f"Unknown fine label {orig_fine_label} for dataset '{dataset_name}'. "
+                        "Update FINE_TO_COARSE_MAPPING to include all labels."
+                    )
+                coarse_region = fine_to_coarse_map[orig_fine_label]
                 coarse_idx = self.region_to_idx[coarse_region]
                 
                 # Get region-local fine label (0-indexed within region)

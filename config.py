@@ -35,21 +35,38 @@ DATA_CONFIG = {
 }
 
 # Data augmentation configuration
-# Applied to training and validation sets to reduce overfitting
+# Applied to training set only to reduce overfitting
 AUGMENTATION_CONFIG = {
     'enabled': True,
-    # Flipping: horizontal/vertical reflections (probability)
-    'flip_prob': 0.5,
-    # Rotation: counter-clockwise rotation range in degrees
-    'rotation_range': (-20, 20),
-    # Random cropping: scale and aspect ratio ranges
-    'crop_scale': (0.85, 1.0),      # Crop 85-100% of image
-    'crop_ratio': (0.9, 1.1),       # Aspect ratio range
-    # Shearing: transformation along axes (degrees)
-    'shear_range': (-12, 12),
-    # Additional augmentations for 3D medical images
-    'gaussian_noise_std': 0.02,     # Add slight Gaussian noise
-    'brightness_range': (0.9, 1.1), # Brightness adjustment
+    # Geometry (conservative defaults for 28^3 volumes)
+    'flip_prob': 0.2,
+    'flip_axes': (0, 1),  # Avoid width axis (left/right laterality)
+    'rotation_prob': 0.5,
+    'rotation_range': (-10, 10),
+    'rotation_axes': (1, 2),  # Axial plane
+    'scale_prob': 0.4,
+    'scale_range': (0.95, 1.05),
+    'scale_axes': (0, 1, 2),
+    'translation_prob': 0.3,
+    'translation_range': (-2, 2),
+    'translation_axes': (1, 2),
+    'crop_prob': 0.0,
+    'crop_scale': (0.9, 1.0),
+    'crop_ratio': (0.95, 1.05),
+    'shear_prob': 0.0,
+    'shear_range': (-5, 5),
+    # Intensity
+    'gaussian_noise_prob': 0.2,
+    'gaussian_noise_std': 0.01,
+    'brightness_prob': 0.2,
+    'brightness_range': (0.95, 1.05),
+    'contrast_prob': 0.2,
+    'contrast_range': (0.95, 1.05),
+    'gamma_prob': 0.1,
+    'gamma_range': (0.9, 1.1),
+    # Final clip range
+    'clip_min': 0.0,
+    'clip_max': 1.0,
 }
 
 # Model architecture configuration
