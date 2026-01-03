@@ -62,17 +62,17 @@ MODEL_CONFIG = {
     # - 'resnet50_3d': ResNet-50 (3D) - Maximum performance (~46M params)
     # - 'densenet121_3d': DenseNet-121 (3D) - Best for limited data (~5.6M params)
     # - 'efficientnet3d_b0': EfficientNet-B0 (3D) - Most efficient (~1.2M params)
-    'architecture': 'efficientnet3d_b0',  # Default: ResNet-18 (3D)
-    'coarse_architecture': 'efficientnet3d_b0',  # Architecture for coarse (Stage 1)
-    'fine_architecture': 'efficientnet3d_b0',    # Architecture for fine (Stage 2)
+    'architecture': 'densenet121_3d',  # Default: ResNet-18 (3D)
+    'coarse_architecture': 'densenet121_3d',  # Architecture for coarse (Stage 1)
+    'fine_architecture': 'densenet121_3d',    # Architecture for fine (Stage 2)
     'dropout_rate': 0.3,
     'use_subtypes': False,
 }
 
 # Training configuration
 TRAINING_CONFIG = {
-    'coarse_epochs': 1,
-    'fine_epochs': 1,
+    'coarse_epochs': 20,
+    'fine_epochs': 20,
     'learning_rate': 0.001,
     'weight_decay': 1e-4,
     'scheduler_step_size': 10,
