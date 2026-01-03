@@ -53,9 +53,9 @@ class CoarseAnatomicalClassifier(nn.Module):
         # Region mapping - use provided mapping or default
         if region_names is None:
             self.region_names = {
-                0: 'brain',
-                1: 'abdomen', 
-                2: 'chest'
+                0: 'abdomen',
+                1: 'chest',
+                2: 'brain'
             }
         else:
             self.region_names = region_names

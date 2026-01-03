@@ -41,7 +41,24 @@ class HierarchicalClassificationModel(nn.Module):
         self.use_subtypes = use_subtypes
         self.num_total_organs = num_total_organs
         self.organ_to_region_map = organ_to_region_map
+        if region_idx_to_name is None:
+            region_idx_to_name = {i: name for i, name in enumerate(region_configs.keys())}
+        expected_keys = set(range(len(region_configs)))
+        if set(region_idx_to_name.keys()) != expected_keys:
+            raise ValueError(
+                "region_idx_to_name keys must be 0..N-1 to match coarse classifier outputs."
+            )
+        if set(region_idx_to_name.values()) != set(region_configs.keys()):
+            raise ValueError(
+                "region_idx_to_name must contain the same region names as region_configs."
+            )
         self.region_idx_to_name = region_idx_to_name
+        self.region_name_to_idx = {
+            name: idx for idx, name in self.region_idx_to_name.items()
+        }
+        self.region_order = [
+            self.region_idx_to_name[i] for i in range(len(self.region_idx_to_name))
+        ]
         self.coarse_model_type = coarse_model_type
         self.fine_model_type = fine_model_type
         
@@ -82,11 +99,12 @@ class HierarchicalClassificationModel(nn.Module):
             return
         
         # Group organs by region
-        region_idx_to_name = {i: name for i, name in enumerate(self.region_configs.keys())}
         self.region_to_organs = {region_name: [] for region_name in self.region_configs.keys()}
         
         for organ_idx, region_idx in self.organ_to_region_map.items():
-            region_name = region_idx_to_name[region_idx]
+            region_name = self.region_idx_to_name.get(region_idx)
+            if region_name is None:
+                raise ValueError(f"Unknown region index {region_idx} in organ_to_region_map")
             self.region_to_organs[region_name].append(organ_idx)
         
         # Sort organs within each region for consistent indexing
@@ -139,7 +157,8 @@ class HierarchicalClassificationModel(nn.Module):
         
         # Stage 2: Route through fine classifiers based on predicted regions
         # Get region index to name mapping
-        region_idx_to_name = {i: name for i, name in enumerate(self.region_configs.keys())}
+        region_idx_to_name = self.region_idx_to_name
+        region_names = self.region_order
         
         # Initialize output tensor for all organ classes
         # Shape: (batch_size, num_total_organs)
@@ -147,12 +166,14 @@ class HierarchicalClassificationModel(nn.Module):
                                    device=x.device, dtype=torch.float32)
         
         # Group samples by predicted region for batch processing
-        region_samples = {region_name: [] for region_name in self.region_configs.keys()}
-        region_indices_map = {region_name: [] for region_name in self.region_configs.keys()}
+        region_samples = {region_name: [] for region_name in region_names}
+        region_indices_map = {region_name: [] for region_name in region_names}
         
         for i in range(batch_size):
             region_idx = region_predictions[i].item()
-            region_name = region_idx_to_name[region_idx]
+            region_name = region_idx_to_name.get(region_idx)
+            if region_name is None:
+                raise ValueError(f"Unknown region index {region_idx} in predictions")
             region_samples[region_name].append(x[i:i+1])
             region_indices_map[region_name].append(i)
         
@@ -175,7 +196,7 @@ class HierarchicalClassificationModel(nn.Module):
                     if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
                         module.eval()
         
-        for region_name in self.region_configs.keys():
+        for region_name in region_names:
             if len(region_samples[region_name]) > 0:
                 # Concatenate samples for this region
                 region_batch = torch.cat(region_samples[region_name], dim=0)

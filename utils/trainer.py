@@ -251,7 +251,10 @@ class HierarchicalTrainer:
                 param.requires_grad = True
         
         # Get region index to name mapping
-        region_idx_to_name = {i: name for i, name in enumerate(self.model.region_configs.keys())}
+        if getattr(self.model, "region_idx_to_name", None):
+            region_idx_to_name = self.model.region_idx_to_name
+        else:
+            region_idx_to_name = {i: name for i, name in enumerate(self.model.region_configs.keys())}
 
         for epoch in range(1, num_epochs + 1):
             # Set all fine classifiers to train mode

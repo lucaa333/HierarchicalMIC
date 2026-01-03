@@ -319,7 +319,7 @@ class HierarchicalMedMNISTDataset(Dataset):
         
         # Set up augmentation (apply to train and val by default, not test)
         if augment is None:
-            augment = split in ['train', 'val']
+            augment = (split == 'train')
         self.augment = augment
         
         if self.augment:
@@ -366,7 +366,7 @@ class HierarchicalMedMNISTDataset(Dataset):
                 continue
                 
             dataset_class = REGION_DATASET_MAPPING[dataset_name]
-            dataset = dataset_class(split=split, download=True)
+            dataset = dataset_class(split=split, download=DATA_CONFIG.get('download', True))
             fine_to_coarse_map = FINE_TO_COARSE_MAPPING[dataset_name]
 
             for i in range(len(dataset)):
