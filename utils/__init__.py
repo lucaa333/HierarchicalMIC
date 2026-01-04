@@ -48,7 +48,7 @@ from .model_utils import (
 from .subtype_classifier import HierarchicalSubtypeNetwork, SubtypeClassifier
 
 # Training utilities
-from .trainer import HierarchicalTrainer, Trainer
+from .trainer import Trainer
 
 # Visualization utilities
 from .visualization import (
@@ -78,7 +78,6 @@ __all__ = [
     "REGION_FINE_CLASS_COUNTS",
     # Training
     "Trainer",
-    "HierarchicalTrainer",
     # Metrics
     "compute_metrics",
     "compute_hierarchical_metrics",

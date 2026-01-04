@@ -149,4 +149,7 @@ class Trainer:
             print(f"\nRestoring best model weights from epoch {best_epoch} (val_acc: {best_val_acc:.4f})")
             self.model.load_state_dict(best_model_state)
 
+        self.history["best_val_acc"] = best_val_acc
+        self.history["best_epoch"] = best_epoch
+
         return self.history
