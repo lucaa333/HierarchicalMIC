@@ -156,7 +156,7 @@ class HierarchicalTrainer:
         coarse_weight=0.3,
         fine_weight=0.7,
     ):
-        from config import DEVICE
+        from config import DEVICE, EXPERIMENT_CONFIG
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -186,10 +186,22 @@ class HierarchicalTrainer:
             "fine_val_loss": [],
             "fine_val_acc": [],
         }
+        self.stage_patience = EXPERIMENT_CONFIG.get("early_stopping_patience", 10)
+        self.best_coarse_val_acc = 0.0
+        self.best_fine_val_acc = 0.0
+        self.coarse_patience_counter = 0
+        self.fine_patience_counter = 0
+        if getattr(self.model, "region_idx_to_name", None):
+            self.region_idx_to_name = self.model.region_idx_to_name
+        else:
+            self.region_idx_to_name = {
+                idx: name for idx, name in enumerate(self.model.region_configs.keys())
+            }
 
-    def train_coarse_stage(self, num_epochs):
-        """Train the coarse classifier."""
+    def train_coarse_stage(self, num_epochs, early_stopping=True):
+        """Train the coarse classifier (with optional validation/early stopping)."""
         print("\n=== Training Stage 1: Coarse Anatomical Classifier ===")
+        patience = self.stage_patience
 
         for epoch in range(1, num_epochs + 1):
             self.model.coarse_classifier.train()
@@ -225,7 +237,29 @@ class HierarchicalTrainer:
             self.history["coarse_train_loss"].append(avg_loss)
             self.history["coarse_train_acc"].append(avg_acc)
 
-    def train_fine_stage(self, num_epochs, freeze_coarse=True):
+            val_loss, val_acc = self.validate_coarse_stage()
+            self.history["coarse_val_loss"].append(val_loss)
+            self.history["coarse_val_acc"].append(val_acc)
+            print(f"Coarse Validation: Loss={val_loss:.4f}, Acc={val_acc:.4f}")
+
+            if early_stopping:
+                if val_acc > self.best_coarse_val_acc:
+                    self.best_coarse_val_acc = val_acc
+                    self.coarse_patience_counter = 0
+                    print(f"  New best coarse validation accuracy: {val_acc:.4f}")
+                else:
+                    self.coarse_patience_counter += 1
+                    print(
+                        f"  Coarse Early Stopping Counter: {self.coarse_patience_counter}/{patience}"
+                    )
+
+                if self.coarse_patience_counter >= patience:
+                    print(
+                        f"\nEarly stopping triggered for coarse stage after {patience} epochs without improvement."
+                    )
+                    break
+
+    def train_fine_stage(self, num_epochs, freeze_coarse=True, early_stopping=True):
         """
         Train region-specific fine classifiers.
         
@@ -251,11 +285,7 @@ class HierarchicalTrainer:
                 param.requires_grad = True
         
         # Get region index to name mapping
-        if getattr(self.model, "region_idx_to_name", None):
-            region_idx_to_name = self.model.region_idx_to_name
-        else:
-            region_idx_to_name = {i: name for i, name in enumerate(self.model.region_configs.keys())}
-
+        region_idx_to_name = self.region_idx_to_name
         for epoch in range(1, num_epochs + 1):
             # Set all fine classifiers to train mode
             for classifier in self.model.fine_classifier.classifiers.values():
@@ -327,6 +357,29 @@ class HierarchicalTrainer:
                 self.history["fine_train_loss"].append(avg_loss)
                 self.history["fine_train_acc"].append(avg_acc)
 
+            val_loss, val_acc = self.validate_fine_stage()
+            self.history["fine_val_loss"].append(val_loss)
+            self.history["fine_val_acc"].append(val_acc)
+            print(f"Fine Validation: Loss={val_loss:.4f}, Acc={val_acc:.4f}")
+
+            if early_stopping:
+                patience = self.stage_patience
+                if val_acc > self.best_fine_val_acc:
+                    self.best_fine_val_acc = val_acc
+                    self.fine_patience_counter = 0
+                    print(f"  New best fine validation accuracy: {val_acc:.4f}")
+                else:
+                    self.fine_patience_counter += 1
+                    print(
+                        f"  Fine Early Stopping Counter: {self.fine_patience_counter}/{patience}"
+                    )
+
+                if self.fine_patience_counter >= patience:
+                    print(
+                        f"\nEarly stopping triggered for fine stage after {patience} epochs without improvement."
+                    )
+                    break
+
     def train(self, coarse_epochs=10, fine_epochs=15):
         """
         Train the hierarchical model in stages.
@@ -338,3 +391,71 @@ class HierarchicalTrainer:
         self.train_fine_stage(fine_epochs)
 
         return self.history
+
+    def validate_coarse_stage(self):
+        """Run validation for the coarse classifier."""
+        self.model.coarse_classifier.eval()
+        total_loss = 0.0
+        correct = 0
+        total = 0
+
+        with torch.no_grad():
+            for imgs, coarse_labels, _ in tqdm(
+                self.val_loader, desc="Coarse Validation"
+            ):
+                imgs = imgs.to(self.device, dtype=torch.float32)
+                if imgs.max() > 1:
+                    imgs = imgs / 255.0
+
+                coarse_labels = coarse_labels.long().to(self.device)
+                outputs = self.model.forward_coarse(imgs)
+                loss = self.criterion(outputs, coarse_labels)
+
+                total_loss += loss.item() * imgs.size(0)
+                preds = outputs.argmax(1)
+                correct += (preds == coarse_labels).sum().item()
+                total += imgs.size(0)
+
+        if total == 0:
+            return 0.0, 0.0
+        return total_loss / total, correct / total
+
+    def validate_fine_stage(self):
+        """Run validation for the fine classifiers."""
+        for classifier in self.model.fine_classifier.classifiers.values():
+            classifier.eval()
+
+        total_loss = 0.0
+        total_correct = 0
+        total_samples = 0
+
+        with torch.no_grad():
+            for imgs, coarse_labels, fine_labels in tqdm(
+                self.val_loader, desc="Fine Validation"
+            ):
+                imgs = imgs.to(self.device, dtype=torch.float32)
+                if imgs.max() > 1:
+                    imgs = imgs / 255.0
+
+                coarse_labels = coarse_labels.long().to(self.device)
+                fine_labels = fine_labels.squeeze(-1).long().to(self.device)
+
+                for region_idx, region_name in self.region_idx_to_name.items():
+                    region_mask = (coarse_labels == region_idx)
+                    if not region_mask.any():
+                        continue
+
+                    region_imgs = imgs[region_mask]
+                    region_fine_labels = fine_labels[region_mask]
+
+                    outputs = self.model.forward_fine(region_imgs, region_name)
+                    loss = self.criterion(outputs, region_fine_labels)
+
+                    total_loss += loss.item() * region_imgs.size(0)
+                    preds = outputs.argmax(1)
+                    total_correct += (preds == region_fine_labels).sum().item()
+                    total_samples += region_imgs.size(0)
+
+        if total_samples == 0:
+            return 0.0, 0.0
+        return total_loss / total_samples, total_correct / total_samples
